@@ -2,9 +2,16 @@ from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import os
-from model import analyze_image_bytes
 
 app = FastAPI()
+
+# ✅ Safe model import
+try:
+    from model import analyze_image_bytes
+except Exception as e:
+    print("❌ Model import error:", e)
+    def analyze_image_bytes(*args, **kwargs):
+        return {"result": "Model error", "confidence": 0.0}
 
 app.add_middleware(
     CORSMiddleware,
@@ -14,11 +21,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 @app.get("/")
 def home():
-    html_path = os.path.join(os.path.dirname(__file__), "frontend", "index.html")
-    with open(html_path, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    try:
+        html_path = os.path.join(os.getcwd(), "frontend", "index.html")
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    except Exception as e:
+        return HTMLResponse(content="<h1>Frontend not found</h1>")
 
 @app.post("/detect")
 async def detect_image(file: UploadFile = File(...)):
@@ -26,7 +40,6 @@ async def detect_image(file: UploadFile = File(...)):
         contents = await file.read()
         result = analyze_image_bytes(contents, filename=file.filename)
 
-        # 🔥 GUARANTEE JSON FORMAT
         if "result" not in result:
             return JSONResponse(
                 {"result": "Processing failed", "confidence": 0.0},
@@ -41,4 +54,3 @@ async def detect_image(file: UploadFile = File(...)):
             {"result": "Server error", "confidence": 0.0},
             status_code=200
         )
-
